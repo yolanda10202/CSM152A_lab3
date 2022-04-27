@@ -26,27 +26,34 @@ module stopwatch(clk, stop, reset, sel, adj, AN3, AN2, AN1, AN0);
 	
 	wire one_hz_clk;
 	wire two_hz_clk;
-	wire faster_clk;
-	wire choose_clk;
+	wire segment_clk;
+	wire blink_clk;
 	
 	reg [31:0] sec;
 	wire [3:0] seg3, seg2, seg1, seg0;
 	
 	// instantiate the other three clocks with clock divider
-	clk_div #(.count_from(0), .count_to()) my_one_hz_clk(.in(clk), .out(one_hz_clk));
-	clk_div #(.count_from(0), .count_to()) my_two_hz_clk(.in(clk), .out(two_hz_clk));
-	clk_div #(.count_from(0), .count_to()) my_faster_hz_clk(.in(clk), .out(faster_hz_clk));
+	clk_div #(.count_from(0), .count_to(100000000)) my_one_hz_clk(.in(clk), .out(one_hz_clk));
+	clk_div #(.count_from(0), .count_to(50000000)) my_two_hz_clk(.in(clk), .out(two_hz_clk));
+	clk_div #(.count_from(0), .count_to(1000000)) my_segment_clk(.in(clk), .out(segment_clk));
+	clk_div #(.count_from(0), .count_to(80000000)) my_blink_clk(.in(clk), .out(blink_clk));
 
-	// choose which clock signal to use
-	always @ (adj) begin
-		if (adj == 0) begin
-			choose_clk = one_hz_clk;
+	// selection
+	
+	// adjustment
+	if (adj) begin
+		// set seconds
+		if (sel == 1) begin
+			// increment number with 2 Hz
 		end
+		
+		// set minutes
 		else begin
-			choose_clk = two_hz_clk;
-			stop = 1;
+		// increment number with 2 Hz
+		
 		end
 	end
+	
 
 	// each iteration is one sec
 	always @ (posedge choose_clk, negedge reset) begin
