@@ -29,10 +29,13 @@ module fsm(state, clk_in, start_sec, end_sec);
 	// localparam STATE2 = 2;
 	// localparam STATE3 = 3;
 	
-	reg [31:0] counter = start_sec;
+	reg [31:0] counter;
+	reg [1:0] stateReg;
 
 	always @(posedge clk_in) begin
-	  case (state)
+		counter = start_sec;
+		stateReg = state;
+	  case (stateReg)
 			// normal (increment)
 			(STATE0): 
 				 counter = counter + 1;
@@ -50,7 +53,7 @@ module fsm(state, clk_in, start_sec, end_sec);
 				 output <= some value
 			*/
 			default:
-				 state <= STATE0;
+				 stateReg = STATE0;
 		endcase
 		
 		end_sec = counter;
