@@ -18,16 +18,18 @@
 // Additional Comments: 
 //
 //////////////////////////////////////////////////////////////////////////////////
-module stopwatch(clk, btnS, btnR, sel, adj, AN3, AN2, AN1, AN0);
+module stopwatch(clk, btnS, btnR, sel, adj, an, seg);
 	// btnS = pause
 	// btnR = reset
 
 	// input clk is a 100MHz clock
 	input clk;
 	input btnS, btnR, sel, adj;
-	output reg [7:0] AN3, AN2, AN1, AN0;
+	output reg [3:0] an;
+	output reg [7:0] seg;
 	
-	wire [3:0] seg3, seg2, seg1, seg0;
+	reg [3:0] seg_num;
+	reg [3:0] seg3, seg2, seg1, seg0;
 	
 	wire one_hz_clk;
 	wire two_hz_clk;
@@ -37,23 +39,67 @@ module stopwatch(clk, btnS, btnR, sel, adj, AN3, AN2, AN1, AN0);
 	reg [1:0] state;
 	reg [31:0] start_sec = 0;
 	reg [31:0] sec;
+	reg [1:0] digit_dis = 0;
+	
+	wire [31:0] end_sec;
 	
 	// instantiate the other three clocks with clock divider
-	clk_div #(.count_from(0), .count_to(100000000)) my_one_hz_clk(.in(clk), .out(one_hz_clk));
-	clk_div #(.count_from(0), .count_to(50000000)) my_two_hz_clk(.in(clk), .out(two_hz_clk));
+	clk_div #(.count_from(0), .count_to(10000000)) my_one_hz_clk(.in(clk), .out(one_hz_clk));
+	//clk_div #(.count_from(0), .count_to(50000000)) my_two_hz_clk(.in(clk), .out(two_hz_clk));
 	clk_div #(.count_from(0), .count_to(1000000)) my_segment_clk(.in(clk), .out(segment_clk));
-	clk_div #(.count_from(0), .count_to(80000000)) my_blink_clk(.in(clk), .out(blink_clk));
+	//clk_div #(.count_from(0), .count_to(80000000)) my_blink_clk(.in(clk), .out(blink_clk));
 	
 	// take care of debouncing/metastability
 	
 	// determine state based on FPGA inputs
 	
 	// instantiate fsm, pass in corresponding clock and state
-	fsm my_fsm(.state(state), .clk_in(one_hz_clk), .start_sec(start_sec), .end_sec(start_sec));
+	fsm my_fsm(.state(state), .clk_in(one_hz_clk), .start_sec(start_sec), .end_sec(end_sec));
 	
 
 	// Display digits on the FPGA's seven-segment display
-	always @(*) begin
+	always @(posedge segment_clk) begin
+		digit_dis = digit_dis + 1;
+	end
+	
+	always @(posedge one_hz_clk) begin
+		start_sec = start_sec + 1;
+	end
+	
+	always @(posedge clk) begin
+		an = 4'b1111;
+		an[digit_dis] = 0;
+		
+		// set the displays
+		seg0 = (end_sec%60)%10;
+		seg1 = (end_sec%60)/10;
+		seg2 = (end_sec/60)%10;
+		seg3 = (end_sec/600)%10;
+		
+		case (digit_dis)
+			0: seg_num = seg0;
+			1: seg_num = seg1;
+			2: seg_num = seg2;
+			3: seg_num = seg3;
+		endcase
+		
+		case (seg_num)
+			0: seg = 8'b11000000;
+			1: seg = 8'b11111001;
+			2: seg = 8'b10100100;
+			3: seg = 8'b10110000;
+			4: seg = 8'b10011001;
+			5: seg = 8'b10010010;
+			6: seg = 8'b10000010;
+			7: seg = 8'b11111000;
+			8: seg = 8'b10000000;
+			9: seg = 8'b10010000;
+			default: seg = 8'b11111111;
+		endcase
+	end
+	
+endmodule 
+/*
 		// reset
 		if (btnR == 1) begin
 			start_sec = 0;
@@ -67,78 +113,93 @@ module stopwatch(clk, btnS, btnR, sel, adj, AN3, AN2, AN1, AN0);
 		else begin
 			state = 2'b00;
 		end
+	*/
+	
+/*
+always @(posedge clk) begin
+			an = 4'b1111;
+		end
 		
 		// set the displays
-		seg0 = (start_sec%60)%10;
-		seg1 = (start_sec%60)/10;
-		seg2 = (start_sec/60)%10;
-		seg3 = (start_sec/600)%10;
+		seg0 = (200%60)%10;
+		seg1 = (200%60)/10;
+		seg2 = (200/60)%10;
+		seg3 = (200/600)%10;
+		
 		
 		// seg0
-		case (seg0)
-			0: AN0 = 8'b11000000;
-			1: AN0 = 8'b11111001;
-			2: AN0 = 8'b10100100;
-			3: AN0 = 8'b10110000;
-			4: AN0 = 8'b10011001;
-			5: AN0 = 8'b10010010;
-			6: AN0 = 8'b10000010;
-			7: AN0 = 8'b11111000;
-			8: AN0 = 8'b10000000;
-			9: AN0 = 8'b10010000;
-			default: AN0 = 8'b11111111;
-		endcase
+		if(an[0]) 
+		begin
+			case (seg0)
+				0: seg = 8'b11000000;
+				1: seg = 8'b11111001;
+				2: seg = 8'b10100100;
+				3: seg = 8'b10110000;
+				4: seg = 8'b10011001;
+				5: seg = 8'b10010010;
+				6: seg = 8'b10000010;
+				7: seg = 8'b11111000;
+				8: seg = 8'b10000000;
+				9: seg = 8'b10010000;
+				default: seg = 8'b11111111;
+			endcase
+			an = 4'b0010;
+		end
 		
 		// seg1
-		case (seg1)
-			0: AN1 = 8'b11000000;
-			1: AN1 = 8'b11111001;
-			2: AN1 = 8'b10100100;
-			3: AN1 = 8'b10110000;
-			4: AN1 = 8'b10011001;
-			5: AN1 = 8'b10010010;
-			6: AN1 = 8'b10000010;
-			7: AN1 = 8'b11111000;
-			8: AN1 = 8'b10000000;
-			9: AN1 = 8'b10010000;
-			default: AN1 = 8'b11111111;
-		endcase
+		if(an[1]) 
+		begin
+			case (seg1)
+				0: seg = 8'b11000000;
+				1: seg = 8'b11111001;
+				2: seg = 8'b10100100;
+				3: seg = 8'b10110000;
+				4: seg = 8'b10011001;
+				5: seg = 8'b10010010;
+				6: seg = 8'b10000010;
+				7: seg = 8'b11111000;
+				8: seg = 8'b10000000;
+				9: seg = 8'b10010000;
+				default: seg = 8'b11111111;
+			endcase
+			an = 4'b0100;
+		end
 		
 		// seg2
-		case (seg2)
-			0: AN2 = 8'b11000000;
-			1: AN2 = 8'b11111001;
-			2: AN2 = 8'b10100100;
-			3: AN2 = 8'b10110000;
-			4: AN2 = 8'b10011001;
-			5: AN2 = 8'b10010010;
-			6: AN2 = 8'b10000010;
-			7: AN2 = 8'b11111000;
-			8: AN2 = 8'b10000000;
-			9: AN2 = 8'b10010000;
-			default: AN2 = 8'b11111111;
-		endcase
+		if(an[2]) 
+		begin
+			case (seg2)
+				0: seg = 8'b11000000;
+				1: seg = 8'b11111001;
+				2: seg = 8'b10100100;
+				3: seg = 8'b10110000;
+				4: seg = 8'b10011001;
+				5: seg = 8'b10010010;
+				6: seg = 8'b10000010;
+				7: seg = 8'b11111000;
+				8: seg = 8'b10000000;
+				9: seg = 8'b10010000;
+				default: seg = 8'b11111111;
+			endcase
+			an = 4'b1000;
+		end
 		
 		// seg3
-		case (seg3)
-			0: AN3 = 8'b11000000;
-			1: AN3 = 8'b11111001;
-			2: AN3 = 8'b10100100;
-			3: AN3 = 8'b10110000;
-			4: AN3 = 8'b10011001;
-			5: AN3 = 8'b10010010;
-			6: AN3 = 8'b10000010;
-			7: AN3 = 8'b11111000;
-			8: AN3 = 8'b10000000;
-			9: AN3 = 8'b10010000;
-			default: AN3 = 8'b11111111;
-		endcase
-	end
-endmodule
-
-/*
-// when one second is hit
-			if () begin
-				
-			end
+		if(an[3]) 
+		begin
+			case (seg3)
+				0: seg = 8'b11000000;
+				1: seg = 8'b11111001;
+				2: seg = 8'b10100100;
+				3: seg = 8'b10110000;
+				4: seg = 8'b10011001;
+				5: seg = 8'b10010010;
+				6: seg = 8'b10000010;
+				7: seg = 8'b11111000;
+				8: seg = 8'b10000000;
+				9: seg = 8'b10010000;
+				default: seg = 8'b11111111;
+			endcase
+			an = 4'b0001;
+		end
 */
