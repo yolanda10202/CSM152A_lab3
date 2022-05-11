@@ -23,8 +23,8 @@ module stopwatch(clk, btnS, btnR, sw, an, seg);
 	// btnR = reset
 	// sw0 = adj
 	// sw1 = sel
-
 	// input clk is a 100MHz clock
+	
 	input clk;
 	input btnS, btnR;
 	input [7:0] sw;
@@ -36,55 +36,37 @@ module stopwatch(clk, btnS, btnR, sw, an, seg);
 	reg [1:0] setReset;
 	reg [1:0] setPause;
 	reg [1:0] setSel;
-	reg [1:0] setAdj;
+	reg [1:0] setAdj = 2'b00;
 	reg pause = 0;
 	reg reset = 0;
 	reg sel = 0;
 	reg adj = 0;
+	reg digits_on = 0;
 	
 	wire one_hz_clk;
 	wire two_hz_clk;
 	wire segment_clk;
 	wire blink_clk;
-	reg choose_display_clk;
-	reg choose_state_clk;
+	wire choose_display_clk;
+	wire choose_state_clk;
 	
 	reg [1:0] state;
-	reg [31:0] start_sec = -1;
+	reg [31:0] start_sec = 0;
 	reg [31:0] sec;
 	reg [1:0] digit_dis = 0;
-	
-	wire [31:0] end_sec;
-	
-	// instantiate the other three clocks with clock divider
+		
+	// instantiate four clocks with clock divider
 	clk_div #(.count_from(0), .count_to(100000000)) my_one_hz_clk(.in(clk), .out(one_hz_clk));
 	clk_div #(.count_from(0), .count_to(50000000)) my_two_hz_clk(.in(clk), .out(two_hz_clk));
 	clk_div #(.count_from(0), .count_to(1000)) my_segment_clk(.in(clk), .out(segment_clk));
-	clk_div #(.count_from(0), .count_to(10000000)) my_blink_clk(.in(clk), .out(blink_clk));
+	clk_div #(.count_from(0), .count_to(25000000)) my_blink_clk(.in(clk), .out(blink_clk));
 	
 	
 	assign choose_state_clk = adj ? two_hz_clk : one_hz_clk;
-	assign choose_display_clk = adj ? blink_clk : segment_clk;
-	/*
-	// choose the display clock based on the state
-		if (adj == 1) begin
-			choose_display_clk = blink_clk;
-			choose_state_clk = two_hz_clk;
-		end 
-		else begin
-			choose_display_clk = segment_clk;
-			choose_state_clk = one_hz_clk;
-		end
-	*/
 	
 	
-	// instantiate fsm, pass in corresponding clock and state
-	//fsm my_fsm(.state(state), .clk_in(choose_state_clk), .start_sec(start_sec), .end_sec(end_sec));
-	
-
-	// Display digits on the FPGA's seven-segment display
-	// take care of debouncing/metastability
 	always @(posedge segment_clk) begin
+		// take care of debouncing/metastability
 		// reset
 		setReset = setReset >> 1;
 		if (btnR == 1) begin
@@ -106,7 +88,7 @@ module stopwatch(clk, btnS, btnR, sw, an, seg);
 			pause = !pause;
 		end
 		
-		// selection
+		// select
 		setSel = setSel >> 1;
 		if (sw[1] == 1) begin
 			setSel[1] = 1;
@@ -130,59 +112,47 @@ module stopwatch(clk, btnS, btnR, sw, an, seg);
 			adj = 0;
 		end
 		
-		
-		
+		// display the next digit
 		digit_dis = digit_dis + 1;
-	end
-	
-	always @(posedge choose_state_clk) begin
-		if (adj == 0) begin
-			if (reset == 1) begin
-				start_sec = -1;
-			end
-			else if (pause == 0) begin
-				start_sec = start_sec + 1;
-			end
-		end
-		else begin // adj == 1
-			// set second
-			if (sel == 1) begin
-				// if second is overflowing
-				if(start_sec % 59) begin
-					start_sec = start_sec - 59;
-				end
-				// else increment second
-				start_sec = start_sec + 1;
-			end
-			
-			// set minute
-			else begin
-				// if minute is overflowing
-				if (start_sec/60 == 99) begin
-					start_sec = start_sec % 60;
-				end
-				// else increment minute
-				start_sec = start_sec + 60;
-			end
-		end
-	end
-	
-	always @(posedge choose_display_clock) begin
-		an = 4'b1111;
-		an[digit_dis] = 0;
 		
-		// set the displays
+		// Display digits on the FPGA's seven-segment display
+		// digits_on takes care of blinking in adjust mode
+		
+		an = 4'b1111;	
+		// set the digit we want to display to 0
+		an[digit_dis] = 0;
+	
+		// set the number of each digit
 		seg0 = (start_sec%60)%10;
 		seg1 = (start_sec%60)/10;
 		seg2 = (start_sec/60)%10;
 		seg3 = (start_sec/600)%10;
 		
-		case (digit_dis)
-			0: seg_num = seg0;
-			1: seg_num = seg1;
-			2: seg_num = seg2;
-			3: seg_num = seg3;
-		endcase
+		if (digits_on) begin
+			case (digit_dis)
+				0: seg_num = seg0;
+				1: seg_num = seg1;
+				2: seg_num = seg2;
+				3: seg_num = seg3;
+			endcase
+		end
+		else if (sel == 0) begin
+			// 10 will take us to the default mode
+			case (digit_dis)
+				0: seg_num = seg0;
+				1: seg_num = seg1;
+				2: seg_num = 10;
+				3: seg_num = 10;
+			endcase
+		end
+		else begin
+			case (digit_dis)
+				0: seg_num = 10;
+				1: seg_num = 10;
+				2: seg_num = seg2;
+				3: seg_num = seg3;
+			endcase
+		end
 		
 		case (seg_num)
 			0: seg = 8'b11000000;
@@ -199,108 +169,52 @@ module stopwatch(clk, btnS, btnR, sw, an, seg);
 		endcase
 	end
 	
-endmodule 
-/*
-		// reset
-		if (btnR == 1) begin
+	always @(posedge choose_state_clk) begin
+		
+		if (reset) begin
 			start_sec = 0;
-			state = 2'b00;
 		end
-		// pause state
-		if (btnS == 1) begin
-			state = 2'b01;
+		else if (!pause && !adj) begin
+			start_sec = start_sec + 1;
 		end 
-		// increment state
-		else begin
-			state = 2'b00;
+		
+		// if in adjust mode
+		if (adj) begin 
+			// set second
+			if (sel) begin
+				// if second is overflowing
+				if(start_sec % 60 == 59) begin
+					start_sec = start_sec - 59;
+				end
+				// else increment second
+				else if (!pause && !reset) begin
+					start_sec = start_sec + 1;
+				end
+			end
+			
+			// set minute
+			else begin
+				// if minute is overflowing
+				if (start_sec/60 == 99) begin
+					start_sec = start_sec % 60;
+				end
+				// else increment minute
+				else if (!pause && !reset) begin
+					start_sec = start_sec + 60;
+				end
+			end
 		end
-	*/
+	end
 	
-/*
-always @(posedge clk) begin
-			an = 4'b1111;
+	always @(posedge blink_clk) begin
+		// if in adjust mode, toggle the display of digits
+		if (adj) begin
+			digits_on = !digits_on;
 		end
-		
-		// set the displays
-		seg0 = (200%60)%10;
-		seg1 = (200%60)/10;
-		seg2 = (200/60)%10;
-		seg3 = (200/600)%10;
-		
-		
-		// seg0
-		if(an[0]) 
-		begin
-			case (seg0)
-				0: seg = 8'b11000000;
-				1: seg = 8'b11111001;
-				2: seg = 8'b10100100;
-				3: seg = 8'b10110000;
-				4: seg = 8'b10011001;
-				5: seg = 8'b10010010;
-				6: seg = 8'b10000010;
-				7: seg = 8'b11111000;
-				8: seg = 8'b10000000;
-				9: seg = 8'b10010000;
-				default: seg = 8'b11111111;
-			endcase
-			an = 4'b0010;
+		// else always display
+		else begin
+			digits_on = 1;
 		end
-		
-		// seg1
-		if(an[1]) 
-		begin
-			case (seg1)
-				0: seg = 8'b11000000;
-				1: seg = 8'b11111001;
-				2: seg = 8'b10100100;
-				3: seg = 8'b10110000;
-				4: seg = 8'b10011001;
-				5: seg = 8'b10010010;
-				6: seg = 8'b10000010;
-				7: seg = 8'b11111000;
-				8: seg = 8'b10000000;
-				9: seg = 8'b10010000;
-				default: seg = 8'b11111111;
-			endcase
-			an = 4'b0100;
-		end
-		
-		// seg2
-		if(an[2]) 
-		begin
-			case (seg2)
-				0: seg = 8'b11000000;
-				1: seg = 8'b11111001;
-				2: seg = 8'b10100100;
-				3: seg = 8'b10110000;
-				4: seg = 8'b10011001;
-				5: seg = 8'b10010010;
-				6: seg = 8'b10000010;
-				7: seg = 8'b11111000;
-				8: seg = 8'b10000000;
-				9: seg = 8'b10010000;
-				default: seg = 8'b11111111;
-			endcase
-			an = 4'b1000;
-		end
-		
-		// seg3
-		if(an[3]) 
-		begin
-			case (seg3)
-				0: seg = 8'b11000000;
-				1: seg = 8'b11111001;
-				2: seg = 8'b10100100;
-				3: seg = 8'b10110000;
-				4: seg = 8'b10011001;
-				5: seg = 8'b10010010;
-				6: seg = 8'b10000010;
-				7: seg = 8'b11111000;
-				8: seg = 8'b10000000;
-				9: seg = 8'b10010000;
-				default: seg = 8'b11111111;
-			endcase
-			an = 4'b0001;
-		end
-*/
+	end
+	
+endmodule 
